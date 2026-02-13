@@ -167,7 +167,7 @@ func (w *Walker) diff() error {
 		snap = append(snap, snapScanner.Text())
 	}
 
-	diff := difference(snap, w.nodes)
+	diff := difference(w.nodes, snap)
 
 	for _, path := range diff {
 		fmt.Println(path)
@@ -176,18 +176,30 @@ func (w *Walker) diff() error {
 	return nil
 }
 
+// a is the newer snapshot, b is the older
 func difference(a, b []string) []string {
-	m := make(map[string]struct{}, len(b))
+	ma := make(map[string]struct{}, len(a))
+	mb := make(map[string]struct{}, len(b))
+
+	for _, item := range a {
+		ma[item] = struct{}{}
+	}
 
 	for _, item := range b {
-		m[item] = struct{}{}
+		mb[item] = struct{}{}
 	}
 
 	var diff []string
 
 	for _, item := range a {
-		if _, found := m[item]; !found {
-			diff = append(diff, item)
+		if _, found := mb[item]; !found {
+			diff = append(diff, "--- "+item)
+		}
+	}
+
+	for _, item := range b {
+		if _, found := ma[item]; !found {
+			diff = append(diff, "+++ "+item)
 		}
 	}
 
