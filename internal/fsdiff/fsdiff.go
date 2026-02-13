@@ -68,11 +68,11 @@ func (w *Walker) Run() error {
 
 	var err error
 
-	switch len(os.Args) {
-	case 1:
+	switch flag.NArg() {
+	case 0:
 		err = w.diff("")
-	case 2:
-		err = w.diff(os.Args[1])
+	case 1:
+		err = w.diff(flag.Args()[0])
 	default:
 		return fmt.Errorf("invalid arguments: %+v", os.Args)
 	}
