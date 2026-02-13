@@ -86,7 +86,10 @@ func (w *Walker) createSnapshot() error {
 	}
 	defer snapFile.Close()
 
-	snapWriter := gzip.NewWriter(bufio.NewWriter(snapFile))
+	bufferedWriter := bufio.NewWriter(snapFile)
+	defer bufferedWriter.Flush()
+
+	snapWriter := gzip.NewWriter(bufferedWriter)
 	defer snapWriter.Close()
 
 	snapHasher := sha256.New()
