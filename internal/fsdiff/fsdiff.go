@@ -66,7 +66,16 @@ func (w *Walker) Run() error {
 		return nil
 	}
 
-	err := w.diff()
+	var err error
+
+	switch len(os.Args) {
+	case 1:
+		err = w.diff("")
+	case 2:
+		err = w.diff(os.Args[1])
+	default:
+		return fmt.Errorf("invalid arguments: %+v", os.Args)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to diff: %w", err)
 	}
@@ -110,7 +119,7 @@ func (w *Walker) createSnapshot() error {
 
 	snapHash := hex.EncodeToString(snapHasher.Sum(nil))
 
-	hashFileName := filepath.Join(snapDir, snapHash)
+	hashFileName := filepath.Join(snapDir, snapHash+".gz")
 
 	err = os.Rename(snapFile.Name(), hashFileName)
 	if err != nil {
@@ -146,8 +155,14 @@ func (w *Walker) collect() {
 	}
 }
 
-func (w *Walker) diff() error {
-	snapFile, err := os.Open(filepath.Join(snapDir, "latest"))
+func (w *Walker) diff(snapHash string) error {
+	snapHashFile := "latest"
+
+	if len(snapHash) > 0 {
+		snapHashFile = snapHash + ".gz"
+	}
+
+	snapFile, err := os.Open(filepath.Join(snapDir, snapHashFile))
 	if err != nil {
 		return fmt.Errorf("failed to open snapshot file: %w", err)
 	}
