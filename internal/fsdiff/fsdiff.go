@@ -144,8 +144,14 @@ func (w *Walker) createSnapshot() error {
 	return nil
 }
 
-func (w *Walker) walk(path string, _ fs.DirEntry, _ error) error {
-	w.ch <- path
+func (w *Walker) walk(path string, d fs.DirEntry, _ error) error {
+	fi, err := d.Info()
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	w.ch <- fmt.Sprintf("%d %s", fi.Size(), path)
+
 	return nil
 }
 
@@ -193,28 +199,34 @@ func (w *Walker) diff(snapHash string) error {
 
 // a is the newer snapshot, b is the older
 func difference(a, b []string) []string {
-	ma := make(map[string]struct{}, len(a))
-	mb := make(map[string]struct{}, len(b))
+	ma := make(map[string]string, len(a))
+	mb := make(map[string]string, len(b))
 
 	for _, item := range a {
-		ma[item] = struct{}{}
+		var size, path string
+		fmt.Sscanf(item, "%s %s", &size, &path)
+		ma[path] = size
 	}
 
 	for _, item := range b {
-		mb[item] = struct{}{}
+		var size, path string
+		fmt.Sscanf(item, "%s %s", &size, &path)
+		mb[path] = size
 	}
 
 	var diff []string
 
-	for _, item := range a {
-		if _, found := mb[item]; !found {
-			diff = append(diff, "+++ "+item)
+	for path, sizeA := range ma {
+		if sizeB, found := mb[path]; !found {
+			diff = append(diff, "+++ "+path)
+		} else if sizeA != sizeB {
+			diff = append(diff, "~~~ "+path)
 		}
 	}
 
-	for _, item := range b {
-		if _, found := ma[item]; !found {
-			diff = append(diff, "--- "+item)
+	for path := range mb {
+		if _, found := ma[path]; !found {
+			diff = append(diff, "--- "+path)
 		}
 	}
 
