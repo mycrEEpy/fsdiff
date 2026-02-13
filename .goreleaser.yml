@@ -1,0 +1,19 @@
+version: 2
+
+builds:
+  - id: fsdiff
+    main: ./cmd/fsdiff
+    binary: fsdiff
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - name_template: "fsdiff_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
+      - fsdiff
