@@ -193,13 +193,13 @@ func difference(a, b []string) []string {
 
 	for _, item := range a {
 		if _, found := mb[item]; !found {
-			diff = append(diff, "--- "+item)
+			diff = append(diff, "+++ "+item)
 		}
 	}
 
 	for _, item := range b {
 		if _, found := ma[item]; !found {
-			diff = append(diff, "+++ "+item)
+			diff = append(diff, "--- "+item)
 		}
 	}
 
