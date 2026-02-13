@@ -6,13 +6,13 @@ snapshot: clean
 
 build: clean
 	mkdir -p dist
-	go build -v -o dist/pakku ./cmd/pakku/
+	go build -v -o dist/fsdiff ./cmd/fsdiff/
 
 release: clean
 	goreleaser release --clean
 
 install: clean
-	go install ./cmd/pakku
+	go install ./cmd/fsdiff
 
 lint:
 	golangci-lint run --timeout 5m
