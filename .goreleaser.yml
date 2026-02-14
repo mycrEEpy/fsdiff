@@ -15,5 +15,5 @@ builds:
 
 archives:
   - name_template: "fsdiff_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
+    ids:
       - fsdiff
