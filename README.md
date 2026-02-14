@@ -21,3 +21,20 @@ Using Pkgx:
 ```shell
 pkgx pkgm install github.com/mycreepy/fsdiff
 ```
+
+## Usage
+
+```shell
+# Create a new snapshot
+fsdiff -s
+
+# Create, update, delete some files
+touch foo
+rm bar
+
+# Compare with lastest snapshot
+fsdiff
+
+# Compare with specific snapshot
+fsdiff -c 1234567890
+```
