@@ -3,34 +3,37 @@ package fsdiff
 import (
 	"bufio"
 	"compress/gzip"
-	"crypto/sha256"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/charlievieth/fastwalk"
 )
 
 var (
-	createSnapshot = flag.Bool("n", false, "new snapshot")
-	rootDir        = flag.String("d", "", "root dir")
+	createSnapshot  = flag.Bool("s", false, "create new snapshot")
+	compareSnapshot = flag.String("c", "latest", "compare snapshot id")
+	rootDir         = flag.String("d", "", "snapshot directory (default \"working directory\")")
 
 	snapDir = filepath.Join(os.TempDir(), "fsdiff")
 )
 
 type Walker struct {
-	ch    chan string
-	nodes []string
+	ch    chan nodeInfo
+	nodes map[string]int64
+}
+
+type nodeInfo struct {
+	path string
+	size int64
 }
 
 func New() (*Walker, error) {
 	return &Walker{
-		ch:    make(chan string, 1024),
-		nodes: make([]string, 0, 1024),
+		ch:    make(chan nodeInfo, 1024),
+		nodes: make(map[string]int64, 4096),
 	}, nil
 }
 
@@ -55,7 +58,6 @@ func (w *Walker) Run() error {
 	}()
 
 	w.collect()
-	sort.Strings(w.nodes)
 
 	if *createSnapshot {
 		err := w.createSnapshot()
@@ -66,16 +68,7 @@ func (w *Walker) Run() error {
 		return nil
 	}
 
-	var err error
-
-	switch flag.NArg() {
-	case 0:
-		err = w.diff("")
-	case 1:
-		err = w.diff(flag.Args()[0])
-	default:
-		return fmt.Errorf("invalid arguments: %+v", os.Args)
-	}
+	err := w.diff(*compareSnapshot)
 	if err != nil {
 		return fmt.Errorf("failed to diff: %w", err)
 	}
@@ -101,29 +94,18 @@ func (w *Walker) createSnapshot() error {
 	snapWriter := gzip.NewWriter(bufferedWriter)
 	defer snapWriter.Close()
 
-	snapHasher := sha256.New()
+	for path, size := range w.nodes {
+		line := fmt.Sprintf("%d %q\n", size, path)
 
-	for _, node := range w.nodes {
-		_, err = snapWriter.Write([]byte(node + "\n"))
+		_, err = snapWriter.Write([]byte(line))
 		if err != nil {
 			return fmt.Errorf("failed to write to snapshot file: %w", err)
 		}
-
-		snapHasher.Write([]byte(node))
 	}
 
 	err = snapWriter.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to write snapshot file: %w", err)
-	}
-
-	snapHash := hex.EncodeToString(snapHasher.Sum(nil))
-
-	hashFileName := filepath.Join(snapDir, snapHash+".gz")
-
-	err = os.Rename(snapFile.Name(), hashFileName)
-	if err != nil {
-		return fmt.Errorf("failed to rename snapshot file: %w", err)
 	}
 
 	latestSnap := filepath.Join(snapDir, "latest")
@@ -133,12 +115,12 @@ func (w *Walker) createSnapshot() error {
 		return fmt.Errorf("failed to remove latest snapshot file: %w", err)
 	}
 
-	err = os.Symlink(hashFileName, latestSnap)
+	err = os.Symlink(snapFile.Name(), latestSnap)
 	if err != nil {
 		return fmt.Errorf("failed to link snapshot file: %w", err)
 	}
 
-	fmt.Printf("snapshot: %s\n", snapHash)
+	fmt.Printf("snapshot: %s\n", filepath.Base(snapFile.Name()))
 	fmt.Printf("nodes: %d\n", len(w.nodes))
 
 	return nil
@@ -150,25 +132,19 @@ func (w *Walker) walk(path string, d fs.DirEntry, _ error) error {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	w.ch <- fmt.Sprintf("%d %s", fi.Size(), path)
+	w.ch <- nodeInfo{path: path, size: fi.Size()}
 
 	return nil
 }
 
 func (w *Walker) collect() {
-	for path := range w.ch {
-		w.nodes = append(w.nodes, path)
+	for ni := range w.ch {
+		w.nodes[ni.path] = ni.size
 	}
 }
 
-func (w *Walker) diff(snapHash string) error {
-	snapHashFile := "latest"
-
-	if len(snapHash) > 0 {
-		snapHashFile = snapHash + ".gz"
-	}
-
-	snapFile, err := os.Open(filepath.Join(snapDir, snapHashFile))
+func (w *Walker) diff(snapId string) error {
+	snapFile, err := os.Open(filepath.Join(snapDir, snapId))
 	if err != nil {
 		return fmt.Errorf("failed to open snapshot file: %w", err)
 	}
@@ -182,10 +158,18 @@ func (w *Walker) diff(snapHash string) error {
 
 	snapScanner := bufio.NewScanner(snapReader)
 
-	snap := make([]string, 0, 1024)
+	snap := make(map[string]int64, 4096)
 
 	for snapScanner.Scan() {
-		snap = append(snap, snapScanner.Text())
+		var path string
+		var size int64
+
+		_, err = fmt.Sscanf(snapScanner.Text(), "%d %q", &size, &path)
+		if err != nil {
+			return fmt.Errorf("failed to parse snapshot file: %w", err)
+		}
+
+		snap[path] = size
 	}
 
 	diff := difference(w.nodes, snap)
@@ -198,36 +182,21 @@ func (w *Walker) diff(snapHash string) error {
 }
 
 // a is the newer snapshot, b is the older
-func difference(a, b []string) []string {
-	ma := make(map[string]string, len(a))
-	mb := make(map[string]string, len(b))
-
-	for _, item := range a {
-		var size, path string
-		fmt.Sscanf(item, "%s %s", &size, &path)
-		ma[path] = size
-	}
-
-	for _, item := range b {
-		var size, path string
-		fmt.Sscanf(item, "%s %s", &size, &path)
-		mb[path] = size
-	}
-
+func difference(a, b map[string]int64) []string {
 	var diff []string
 
-	for path, sizeA := range ma {
-		if sizeB, found := mb[path]; !found {
+	for path, sizeA := range a {
+		if sizeB, found := b[path]; !found {
 			diff = append(diff, "+++ "+path)
 		} else if sizeA != sizeB {
 			diff = append(diff, "~~~ "+path)
 		}
+
+		delete(b, path)
 	}
 
-	for path := range mb {
-		if _, found := ma[path]; !found {
-			diff = append(diff, "--- "+path)
-		}
+	for path := range b {
+		diff = append(diff, "--- "+path)
 	}
 
 	return diff

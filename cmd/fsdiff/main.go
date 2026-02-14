@@ -19,8 +19,8 @@ var (
 )
 
 func main() {
-	flag.BoolVar(&shouldPrintVersion, "v", false, "Show version")
-	flag.BoolVar(&shouldPrintMetrics, "m", false, "Show metrics")
+	flag.BoolVar(&shouldPrintVersion, "v", false, "print version")
+	flag.BoolVar(&shouldPrintMetrics, "m", false, "print metrics")
 
 	flag.Parse()
 
