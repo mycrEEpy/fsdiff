@@ -86,13 +86,13 @@ func (w *Walker) createSnapshot() error {
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot file: %w", err)
 	}
-	defer snapFile.Close()
+	defer func() {_ = snapFile.Close()}()
 
 	bufferedWriter := bufio.NewWriter(snapFile)
-	defer bufferedWriter.Flush()
+	defer func() {_ = bufferedWriter.Flush()}()
 
 	snapWriter := gzip.NewWriter(bufferedWriter)
-	defer snapWriter.Close()
+	defer func() {_ = snapWriter.Close()}()
 
 	for path, size := range w.nodes {
 		line := fmt.Sprintf("%d %q\n", size, path)
@@ -148,13 +148,13 @@ func (w *Walker) diff(snapId string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open snapshot file: %w", err)
 	}
-	defer snapFile.Close()
+	defer func() {_ = snapFile.Close()}()
 
 	snapReader, err := gzip.NewReader(snapFile)
 	if err != nil {
 		return fmt.Errorf("failed to open snapshot file reader: %w", err)
 	}
-	defer snapReader.Close()
+	defer func() {_ = snapReader.Close()}()
 
 	snapScanner := bufio.NewScanner(snapReader)
 
